@@ -1,6 +1,9 @@
 package br.com.alg.gifoodauth;
 
+import java.util.Arrays;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -10,6 +13,9 @@ import org.springframework.security.oauth2.config.annotation.web.configuration.A
 import org.springframework.security.oauth2.config.annotation.web.configuration.EnableAuthorizationServer;
 import org.springframework.security.oauth2.config.annotation.web.configurers.AuthorizationServerEndpointsConfigurer;
 import org.springframework.security.oauth2.config.annotation.web.configurers.AuthorizationServerSecurityConfigurer;
+import org.springframework.security.oauth2.provider.CompositeTokenGranter;
+import org.springframework.security.oauth2.provider.TokenGranter;
+import org.springframework.security.oauth2.provider.token.store.JwtAccessTokenConverter;
 
 @Configuration
 @EnableAuthorizationServer
@@ -23,7 +29,7 @@ public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdap
 
     @Autowired
     private AuthenticationManager authenticationManager;
-
+    
     @Override
     public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
         clients.inMemory()
@@ -36,11 +42,21 @@ public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdap
                 
                 .and()
                    .withClient("foodanalytics")
-                   .secret(passwordEncoder.encode("food123"))
+                   .secret(passwordEncoder.encode(""))
                    .authorizedGrantTypes("authorization_code")
                    .scopes("write", "read")
                    .redirectUris("http://localhost:8085")
+                   
+                   //http://localhost:8081/oauth/authorize?response_type=code&client_id=foodanalytics&state=abc&redirect_uri=http://aplicacao-cliente
+                   
+               .and()
+                   .withClient("webadmin")
+                   .authorizedGrantTypes("implicit")
+                   .scopes("write", "read")
+                   .redirectUris("http://aplicacao-cliente")
                
+                   //http://localhost:8081/oauth/authorize?response_type=token&client_id=webadmin&state=abc&redirect_uri=http://aplicacao-cliente
+                   
                 .and()
                    .withClient("faturamentos")
                    .secret(passwordEncoder.encode("faturamento123"))
@@ -51,13 +67,35 @@ public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdap
     @Override
     public void configure(AuthorizationServerSecurityConfigurer security) throws Exception {
         //security.checkTokenAccess("isAuthenticated()");
-        security.checkTokenAccess("permitAll()");
+        security.checkTokenAccess("permitAll()")
+        .allowFormAuthenticationForClients();
     }
 
     @Override
     public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
         endpoints.authenticationManager(authenticationManager)
         .userDetailsService(userDetailsService)
-        .reuseRefreshTokens(true);
+        .reuseRefreshTokens(true)
+        .accessTokenConverter(jwtAccessTokenConverter())
+        .tokenGranter(tokenGranter(endpoints));
     }
+    
+    @Bean
+    public JwtAccessTokenConverter jwtAccessTokenConverter() {
+    	JwtAccessTokenConverter jwtAccessTokenConverter = new JwtAccessTokenConverter();
+    	jwtAccessTokenConverter.setSigningKey("gifood2");
+    	
+    	return jwtAccessTokenConverter;
+    }
+    
+    private TokenGranter tokenGranter(AuthorizationServerEndpointsConfigurer endpoints) {
+		var pkceAuthorizationCodeTokenGranter = new PkceAuthorizationCodeTokenGranter(endpoints.getTokenServices(),
+				endpoints.getAuthorizationCodeServices(), endpoints.getClientDetailsService(),
+				endpoints.getOAuth2RequestFactory());
+		
+		var granters = Arrays.asList(
+				pkceAuthorizationCodeTokenGranter, endpoints.getTokenGranter());
+		
+		return new CompositeTokenGranter(granters);
+	}
 }
