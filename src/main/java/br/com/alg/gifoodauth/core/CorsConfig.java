@@ -1,4 +1,4 @@
-package br.com.alg.gifoodauth;
+package br.com.alg.gifoodauth.core;
 
 import java.util.Collections;
 
